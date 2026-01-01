@@ -1,0 +1,21 @@
+{
+  "name": "@kapulaga/client",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "three": "^0.160.0",
+    "@geckos.io/client": "^3.0.0",
+    "@kapulaga/common": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "vite": "^5.0.0",
+    "@types/three": "^0.160.0"
+  }
+}
