@@ -1,15 +1,15 @@
-import * as THREE from "three";
 import { geckos } from "@geckos.io/client";
+import * as THREE from "three";
 import { PORT } from "@kapulaga/common";
 
-// setup three js scene
+// --- SCENE SETUP (Standard) ---
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87ceeb); // sky blue
-
+scene.background = new THREE.Color(0x87ceeb);
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(0, 2, 8);
+camera.position.set(0, 5, 10);
+camera.lookAt(0, 0, 0);
 
-const renderer = new THREE.WebGL1Renderer();
+const renderer = new THREE.WebGLRenderer();
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
@@ -18,74 +18,88 @@ light.position.set(5, 10, 7);
 scene.add(light);
 scene.add(new THREE.AmbientLight(0x404040));
 
-// Create the Ground Mesh (Visual only)
-const groundGeo = new THREE.BoxGeometry(20, 0.2, 20);
-const groundMat = new THREE.MeshStandardMaterial({ color: 0x228b22 }); // Green
-const ground = new THREE.Mesh(groundGeo, groundMat);
+const ground = new THREE.Mesh(
+  new THREE.BoxGeometry(20, 0.2, 20),
+  new THREE.MeshStandardMaterial({ color: 0x228b22 }),
+);
 scene.add(ground);
 
-// Create the Player Cube Mesh (Visual only)
-const playerGeo = new THREE.BoxGeometry(1, 1, 1);
-const playerMat = new THREE.MeshStandardMaterial({ color: 0xff0000 }); // Red
-const playerCube = new THREE.Mesh(playerGeo, playerMat);
-scene.add(playerCube);
+// --- MULTIPLAYER ENTITY MANAGER ---
+// We keep track of all active meshes here
+const playerMeshes = new Map<string, THREE.Mesh>();
 
-const keys = {
-  w: false,
-  a: false,
-  s: false,
-  d: false,
+const createPlayerMesh = () => {
+  return new THREE.Mesh(
+    new THREE.BoxGeometry(1, 1, 1),
+    new THREE.MeshStandardMaterial({ color: 0xff0000 }), // Everyone is Red (for now)
+  );
 };
 
+// --- INPUT LOGIC ---
+const keys = { w: false, a: false, s: false, d: false };
 function sendInput() {
-  // Calculate direction based on keys
-  // x: -1 (Left/A), 1 (Right/D)
-  // y: -1 (Back/S), 1 (Forward/W) -- Standard 2D coordinate logic
   const input = {
     x: (keys.a ? -1 : 0) + (keys.d ? 1 : 0),
     y: (keys.s ? -1 : 0) + (keys.w ? 1 : 0),
   };
-
-  // Send to server
-  if (channel) {
-    channel.emit("playerInput", input);
-  }
+  if (channel) channel.emit("playerInput", input);
 }
-
 window.addEventListener("keydown", (e) => {
-  const key = e.key.toLowerCase();
-  if (key in keys) {
-    keys[key as keyof typeof keys] = true;
+  const k = e.key.toLowerCase();
+  if (k in keys) {
+    keys[k as keyof typeof keys] = true;
     sendInput();
   }
 });
-
 window.addEventListener("keyup", (e) => {
-  const key = e.key.toLowerCase();
-  if (key in keys) {
-    keys[key as keyof typeof keys] = false;
+  const k = e.key.toLowerCase();
+  if (k in keys) {
+    keys[k as keyof typeof keys] = false;
     sendInput();
   }
 });
 
-// connect to server
-let channel: any = null; // Global reference
+// --- NETWORK LOGIC ---
+let channel: any = null;
 const geckosChannel = geckos({ port: PORT });
-geckosChannel.onConnect((error) => {
-  if (error) {
-    console.error("[CLIENT] Connection failed:", error.message);
-    return;
-  }
-  console.log("[CLIENT] Connected for Duty");
-  channel = geckosChannel;
 
-  // Listen for updates
-  channel.on("worldState", (data: any) => {
-    playerCube.position.set(data.x, data.y, data.z);
+geckosChannel.onConnect((error) => {
+  if (error) return console.error(error.message);
+  channel = geckosChannel;
+  console.log(`[CLIENT] Connected. My ID: ${channel.id}`);
+
+  channel.on("worldState", (snapshot: any[]) => {
+    // 1. Track which IDs are in this update
+    const activeIds = new Set<string>();
+
+    snapshot.forEach((playerState) => {
+      activeIds.add(playerState.id);
+
+      if (playerMeshes.has(playerState.id)) {
+        // UPDATE existing player
+        const mesh = playerMeshes.get(playerState.id)!;
+        mesh.position.set(playerState.x, playerState.y, playerState.z);
+      } else {
+        // CREATE new player
+        console.log(`[CLIENT] Spawning new player: ${playerState.id}`);
+        const mesh = createPlayerMesh();
+        mesh.position.set(playerState.x, playerState.y, playerState.z);
+        scene.add(mesh);
+        playerMeshes.set(playerState.id, mesh);
+      }
+    });
+
+    // 2. CLEANUP (Remove players who are not in the snapshot anymore)
+    for (const [id, mesh] of playerMeshes) {
+      if (!activeIds.has(id)) {
+        console.log(`[CLIENT] Player left: ${id}`);
+        scene.remove(mesh);
+        playerMeshes.delete(id);
+      }
+    }
   });
 });
 
-// render loop
 function animate() {
   requestAnimationFrame(animate);
   renderer.render(scene, camera);

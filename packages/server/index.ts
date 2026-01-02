@@ -1,63 +1,96 @@
-import RAPIER from "@dimforge/rapier3d-compat";
 import { geckos } from "@geckos.io/server";
+import RAPIER from "@dimforge/rapier3d-compat";
 import { PORT, TICK_RATE, type InputPayload } from "@kapulaga/common";
 
-// init phsics engine
 await RAPIER.init();
 const gravity = { x: 0.0, y: -9.81, z: 0.0 };
 const world = new RAPIER.World(gravity);
 
-// Ground
+// setup Ground
 const groundBody = world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
 world.createCollider(RAPIER.ColliderDesc.cuboid(10.0, 0.1, 10.0), groundBody);
 
-// Player
-const rigidBodyDesc = RAPIER.RigidBodyDesc.dynamic().setTranslation(0.0, 5.0, 0.0);
-const playerBody = world.createRigidBody(rigidBodyDesc);
-world.createCollider(RAPIER.ColliderDesc.cuboid(0.5, 0.5, 0.5), playerBody);
+// the Player Registry
+// we map a Socket ID (string) to their Physics Body and current Input
+interface PlayerState {
+  body: RAPIER.RigidBody;
+  input: InputPayload;
+}
+const players = new Map<string, PlayerState>();
 
-// Store the player's current intended direction
-let currentInput: InputPayload = { x: 0, y: 0 };
 const MOVE_SPEED = 5;
-
-// starting the network
 const io = geckos();
+
 io.listen(PORT);
+console.log("[SERVER] Lobby Open. Waiting for combatants...");
 
-console.log("[SERVER] Physics Engine Ready.");
-
-// game loop
-// we run this 30 times a second (approx every 33ms)
+// --- GAME LOOP ---
 setInterval(() => {
-  // 1. Apply Movement Logic
-  // We manipulate velocity directly for arcade-like control
-  const linvel = playerBody.linvel();
+  const snapshot: any[] = [];
 
-  // We keep the falling speed (y), but override x and z based on input
-  // Note: In 3D space, "Y" is Up/Down. "Z" is usually Forward/Back.
-  playerBody.setLinvel(
-    {
-      x: currentInput.x * MOVE_SPEED,
-      y: linvel.y,
-      z: -currentInput.y * MOVE_SPEED, // Negative because in 3D, -Z is often "Forward"
-    },
-    true,
-  );
+  // A. Process every player
+  players.forEach((player, id) => {
+    // 1. Apply Physics based on their specific input
+    const linvel = player.body.linvel();
+    player.body.setLinvel(
+      {
+        x: player.input.x * MOVE_SPEED,
+        y: linvel.y,
+        z: -player.input.y * MOVE_SPEED,
+      },
+      true,
+    );
 
-  // 2. Step Physics
+    // 2. Prepare data for snapshot
+    const t = player.body.translation();
+    snapshot.push({
+      id: id, // The critical tag: "Who is this?"
+      x: t.x,
+      y: t.y,
+      z: t.z,
+    });
+  });
+
+  // B. Step World
   world.step();
 
-  // 3. Broadcast
-  const t = playerBody.translation();
-  io.emit("worldState", { id: "cube-1", x: t.x, y: t.y, z: t.z });
+  // C. Broadcast the WHOLE list to EVERYONE
+  // Now we send an Array: [{id: 'A',...}, {id: 'B',...}]
+  if (snapshot.length > 0) {
+    io.emit("worldState", snapshot);
+  }
 }, 1000 / TICK_RATE);
 
-// NETWORK HANDLER
+// --- NETWORK HANDLER ---
 io.onConnection((channel) => {
-  console.log(`[SERVER] Operator connected: ${channel.id}`);
+  console.log(`[SERVER] ${channel.id} joined the lobby.`);
 
+  // 1. SPAWN: Create a body for this specific connection
+  const bodyDesc = RAPIER.RigidBodyDesc.dynamic().setTranslation(0.0, 5.0, 0.0);
+  const body = world.createRigidBody(bodyDesc);
+  world.createCollider(RAPIER.ColliderDesc.cuboid(0.5, 0.5, 0.5), body);
+
+  // 2. REGISTER: Add to our map
+  players.set(channel.id as string, {
+    body,
+    input: { x: 0, y: 0 },
+  });
+
+  // 3. LISTEN: Handle inputs for THIS player
   channel.on("playerInput", (data: any) => {
-    // Update the global input variable
-    currentInput = data as InputPayload;
+    const player = players.get(channel.id as string);
+    if (player) {
+      player.input = data as InputPayload;
+    }
+  });
+
+  // 4. CLEANUP: When they leave, delete the body
+  channel.onDisconnect(() => {
+    console.log(`[SERVER] ${channel.id} disconnected.`);
+    const player = players.get(channel.id as string);
+    if (player) {
+      world.removeRigidBody(player.body); // Remove from physics world
+      players.delete(channel.id as string); // Remove from our map
+    }
   });
 });
