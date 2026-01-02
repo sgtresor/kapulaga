@@ -31,3 +31,18 @@
 
 **Technical Debt/Notes:**
 - Input is sent on every keypress. Should probably send continuously or strictly on tick to save bandwidth later.
+
+## [Phase 4] Multiplayer Lobby
+**Status:** Completed
+**Date:** 2026-01-02
+
+**Changes:**
+- **Server:** Now manages a `Map` of players.
+- **Server:** Spawns a unique RigidBody for every new connection.
+- **Client:** "Entity Manager" creates/destroys meshes dynamically.
+- **Test:** Confirmed 2 browser tabs can control separate cubes independently.
+
+**Technical Debt/Notes:**
+- **Identity Crisis:** All cubes look the same (Red). You don't know which one is yours.
+- **Camera:** Still static. If you walk away, you leave the screen.
+- **Interpolation:** Still jittery.
