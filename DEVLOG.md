@@ -15,3 +15,18 @@
 - Visuals: Cube "teleports" (need interpolation).
 - Code: Formatting was inconsistent (Fixed with Biome).
 - Gameplay: No inputs yet (cannot move).
+
+## [Phase 2] The Synchronized Cube
+**Status:** Completed
+**Date:** 2026-01-02
+
+**Changes:**
+- Replaced "Ping/Pong" with real physics data.
+- Server now runs a Rapier World (Gravity -9.81).
+- Client renders a Red Cube (Player) and Green Ground.
+- **Visuals:** The cube falls, but looks jittery (30Hz server vs 60Hz screen).
+
+**Technical Debt/Notes:**
+- Hardcoded "cube-1" ID.
+- No client-side prediction or interpolation yet.
+- Code style enforced via Biome.
