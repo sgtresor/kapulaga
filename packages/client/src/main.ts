@@ -30,19 +30,57 @@ const playerMat = new THREE.MeshStandardMaterial({ color: 0xff0000 }); // Red
 const playerCube = new THREE.Mesh(playerGeo, playerMat);
 scene.add(playerCube);
 
+const keys = {
+  w: false,
+  a: false,
+  s: false,
+  d: false,
+};
+
+function sendInput() {
+  // Calculate direction based on keys
+  // x: -1 (Left/A), 1 (Right/D)
+  // y: -1 (Back/S), 1 (Forward/W) -- Standard 2D coordinate logic
+  const input = {
+    x: (keys.a ? -1 : 0) + (keys.d ? 1 : 0),
+    y: (keys.s ? -1 : 0) + (keys.w ? 1 : 0),
+  };
+
+  // Send to server
+  if (channel) {
+    channel.emit("playerInput", input);
+  }
+}
+
+window.addEventListener("keydown", (e) => {
+  const key = e.key.toLowerCase();
+  if (key in keys) {
+    keys[key as keyof typeof keys] = true;
+    sendInput();
+  }
+});
+
+window.addEventListener("keyup", (e) => {
+  const key = e.key.toLowerCase();
+  if (key in keys) {
+    keys[key as keyof typeof keys] = false;
+    sendInput();
+  }
+});
+
 // connect to server
-const channel = geckos({ port: PORT });
-channel.onConnect((error) => {
+let channel: any = null; // Global reference
+const geckosChannel = geckos({ port: PORT });
+geckosChannel.onConnect((error) => {
   if (error) {
     console.error("[CLIENT] Connection failed:", error.message);
     return;
   }
-  console.log("[CLIENT] Connected to Physics Server");
+  console.log("[CLIENT] Connected for Duty");
+  channel = geckosChannel;
 
   // Listen for updates
   channel.on("worldState", (data: any) => {
-    // SNAP the mesh to the server position
-    // (We will make this smooth later, for now, we want to see raw data)
     playerCube.position.set(data.x, data.y, data.z);
   });
 });
