@@ -2,12 +2,12 @@ import { geckos } from "@geckos.io/client";
 import * as THREE from "three";
 import { PORT } from "@kapulaga/common";
 
-// --- SCENE SETUP (Standard) ---
+// --- 1. SCENE SETUP ---
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
+
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(0, 5, 10);
-camera.lookAt(0, 0, 0);
+// We don't set a fixed position anymore, the update loop will handle it.
 
 const renderer = new THREE.WebGLRenderer();
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -24,18 +24,17 @@ const ground = new THREE.Mesh(
 );
 scene.add(ground);
 
-// --- MULTIPLAYER ENTITY MANAGER ---
-// We keep track of all active meshes here
+// --- 2. ENTITY MANAGEMENT ---
 const playerMeshes = new Map<string, THREE.Mesh>();
+let myId = ""; // We will store our ID here once connected
 
-const createPlayerMesh = () => {
-  return new THREE.Mesh(
-    new THREE.BoxGeometry(1, 1, 1),
-    new THREE.MeshStandardMaterial({ color: 0xff0000 }), // Everyone is Red (for now)
-  );
+// Helper to create a mesh with specific color
+const createPlayerMesh = (isMe: boolean) => {
+  const color = isMe ? 0x0000ff : 0xff0000; // Blue for me, Red for others
+  return new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color }));
 };
 
-// --- INPUT LOGIC ---
+// --- 3. INPUT ---
 const keys = { w: false, a: false, s: false, d: false };
 function sendInput() {
   const input = {
@@ -59,40 +58,41 @@ window.addEventListener("keyup", (e) => {
   }
 });
 
-// --- NETWORK LOGIC ---
+// --- 4. NETWORK LOGIC ---
 let channel: any = null;
 const geckosChannel = geckos({ port: PORT });
 
 geckosChannel.onConnect((error) => {
   if (error) return console.error(error.message);
   channel = geckosChannel;
-  console.log(`[CLIENT] Connected. My ID: ${channel.id}`);
+  myId = channel.id as string; // STORE MY ID
+  console.log(`[CLIENT] Connected. My ID: ${myId}`);
 
   channel.on("worldState", (snapshot: any[]) => {
-    // 1. Track which IDs are in this update
     const activeIds = new Set<string>();
 
     snapshot.forEach((playerState) => {
       activeIds.add(playerState.id);
 
       if (playerMeshes.has(playerState.id)) {
-        // UPDATE existing player
+        // UPDATE
         const mesh = playerMeshes.get(playerState.id)!;
         mesh.position.set(playerState.x, playerState.y, playerState.z);
       } else {
-        // CREATE new player
-        console.log(`[CLIENT] Spawning new player: ${playerState.id}`);
-        const mesh = createPlayerMesh();
+        // CREATE
+        const isMe = playerState.id === myId;
+        console.log(`[CLIENT] Spawning ${isMe ? "MYSELF" : "ENEMY"} (${playerState.id})`);
+
+        const mesh = createPlayerMesh(isMe);
         mesh.position.set(playerState.x, playerState.y, playerState.z);
         scene.add(mesh);
         playerMeshes.set(playerState.id, mesh);
       }
     });
 
-    // 2. CLEANUP (Remove players who are not in the snapshot anymore)
+    // CLEANUP
     for (const [id, mesh] of playerMeshes) {
       if (!activeIds.has(id)) {
-        console.log(`[CLIENT] Player left: ${id}`);
         scene.remove(mesh);
         playerMeshes.delete(id);
       }
@@ -100,8 +100,28 @@ geckosChannel.onConnect((error) => {
   });
 });
 
+// --- 5. RENDER LOOP (With Camera Follow) ---
+const CAMERA_OFFSET = new THREE.Vector3(0, 5, 8); // Behind and above
+const CAMERA_SMOOTHNESS = 0.1; // 0.0 to 1.0 (Lower is smoother/slower)
+
 function animate() {
   requestAnimationFrame(animate);
+
+  // CAMERA LOGIC: Find my mesh and follow it
+  if (myId && playerMeshes.has(myId)) {
+    const myMesh = playerMeshes.get(myId)!;
+
+    // Calculate where the camera WANTS to be (Player Position + Offset)
+    const targetPosition = myMesh.position.clone().add(CAMERA_OFFSET);
+
+    // Smoothly move the camera there (Linear Interpolation - Lerp)
+    camera.position.lerp(targetPosition, CAMERA_SMOOTHNESS);
+
+    // Always look at the player
+    camera.lookAt(myMesh.position);
+  }
+
   renderer.render(scene, camera);
 }
+
 animate();
