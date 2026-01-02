@@ -46,3 +46,16 @@
 - **Identity Crisis:** All cubes look the same (Red). You don't know which one is yours.
 - **Camera:** Still static. If you walk away, you leave the screen.
 - **Interpolation:** Still jittery.
+
+## [Phase 5] Identity & Camera
+**Status:** Completed
+**Date:** 2026-01-02
+
+**Changes:**
+- **Visuals:** Implemented "Relative Coloring" (I am Blue, You are Red).
+- **Camera:** Now follows the local player using Linear Interpolation (Lerp).
+- **Network:** Client stores its own Socket ID to distinguish self from others.
+
+**Observations:**
+- The game is playable! You can chase other players.
+- **The Jitter:** Because the camera now follows the "Jittery Cube," the whole screen shakes slightly.
