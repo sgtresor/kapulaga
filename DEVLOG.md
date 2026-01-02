@@ -4,29 +4,30 @@
 - **Server:** Authoritative. Runs Rapier Physics (Headless). 30 Ticks/sec.
 - **Client:** "Dumb" terminal. Draws Three.js meshes based on server snapshots.
 - **Protocol:** UDP (Geckos.io) for fast state updates.
+- **Input:** Client sends intended direction; Server applies velocity.
 
 ## Current Status (MVP)
 - [x] Monorepo setup (Bun)
 - [x] Server-Client Connection (Ping/Pong)
 - [x] Physics: Server drops a generic cube.
 - [x] Visuals: Client renders the cube falling.
+- [x] Gameplay: Basic WASD Movement (Server-Authoritative).
 
 ## Known Issues
-- Visuals: Cube "teleports" (need interpolation).
-- Code: Formatting was inconsistent (Fixed with Biome).
-- Gameplay: No inputs yet (cannot move).
+- **Camera:** Static. If you walk too far, you go off-screen.
+- **Visuals:** Movement is jittery (needs interpolation).
+- **Multiplayer:** Only controls "Cube-1". If a second player joins, they control the SAME cube (Ghost in the machine).
+- **Physics:** No jumping logic yet.
 
-## [Phase 2] The Synchronized Cube
+## [Phase 3] Remote Control
 **Status:** Completed
 **Date:** 2026-01-02
 
 **Changes:**
-- Replaced "Ping/Pong" with real physics data.
-- Server now runs a Rapier World (Gravity -9.81).
-- Client renders a Red Cube (Player) and Green Ground.
-- **Visuals:** The cube falls, but looks jittery (30Hz server vs 60Hz screen).
+- Implemented `InputPayload` in shared package.
+- Client captures Keyboard state and streams it to Server.
+- Server applies velocity to the RigidBody.
+- **Outcome:** Successful remote control of the physics object.
 
 **Technical Debt/Notes:**
-- Hardcoded "cube-1" ID.
-- No client-side prediction or interpolation yet.
-- Code style enforced via Biome.
+- Input is sent on every keypress. Should probably send continuously or strictly on tick to save bandwidth later.
